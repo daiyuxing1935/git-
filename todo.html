@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Todo</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f0f2f5;
+  display: flex; justify-content: center; padding-top: 80px;
+  min-height: 100vh; color: #333;
+}
+.container { width: 480px; max-width: 95vw; }
+h1 { text-align: center; font-size: 28px; color: #1a1a2e; margin-bottom: 24px; }
+
+.input-row { display: flex; gap: 8px; margin-bottom: 20px; }
+.input-row input {
+  flex: 1; padding: 10px 14px; border: 2px solid #e0e0e0; border-radius: 8px;
+  font-size: 15px; outline: none; transition: border-color .2s;
+}
+.input-row input:focus { border-color: #4f7cff; }
+.input-row button {
+  padding: 10px 20px; background: #4f7cff; color: #fff; border: none;
+  border-radius: 8px; font-size: 15px; cursor: pointer; transition: background .2s;
+}
+.input-row button:hover { background: #3b62e0; }
+
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.filters { display: flex; gap: 4px; }
+.filters button {
+  padding: 6px 14px; border: none; background: transparent; border-radius: 6px;
+  font-size: 13px; cursor: pointer; color: #888; transition: all .2s;
+}
+.filters button.active { background: #4f7cff; color: #fff; }
+.filters button:hover:not(.active) { color: #333; background: #e8e8e8; }
+.toolbar .clear-btn { font-size: 13px; color: #e74c3c; background: none; border: none; cursor: pointer; }
+.toolbar .clear-btn:hover { text-decoration: underline; }
+
+.todo-list { list-style: none; }
+.todo-item {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  background: #fff; border-radius: 8px; margin-bottom: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06); transition: box-shadow .2s;
+}
+.todo-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+.todo-item.completed .todo-text { text-decoration: line-through; color: #bbb; }
+
+.checkbox {
+  width: 20px; height: 20px; border: 2px solid #ccc; border-radius: 50%;
+  flex-shrink: 0; cursor: pointer; display: flex; align-items: center;
+  justify-content: center; transition: all .2s;
+}
+.checkbox.checked { background: #4f7cff; border-color: #4f7cff; }
+.checkbox.checked::after { content: '✓'; color: #fff; font-size: 12px; font-weight: bold; }
+
+.todo-text { flex: 1; font-size: 15px; word-break: break-all; }
+.todo-item.editing .todo-text { display: none; }
+.edit-input { flex: 1; font-size: 15px; padding: 4px 8px; border: 2px solid #4f7cff; border-radius: 4px; outline: none; display: none; }
+.todo-item.editing .edit-input { display: block; }
+.todo-item.editing .actions { display: none; }
+
+.actions { display: flex; gap: 4px; flex-shrink: 0; }
+.actions button {
+  padding: 4px 8px; border: none; background: transparent; cursor: pointer;
+  font-size: 13px; border-radius: 4px; transition: background .2s;
+}
+.edit-btn { color: #4f7cff; }
+.edit-btn:hover { background: #eef2ff; }
+.del-btn { color: #e74c3c; }
+.del-btn:hover { background: #fde8e8; }
+.save-btn { color: #27ae60; font-size: 15px; cursor: pointer; background: none; border: none; padding: 4px 8px; }
+.cancel-btn { color: #999; font-size: 15px; cursor: pointer; background: none; border: none; padding: 4px 8px; }
+
+.footer { text-align: center; margin-top: 20px; font-size: 13px; color: #aaa; }
+.empty { text-align: center; padding: 40px 0; color: #bbb; font-size: 15px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>📝 Todo</h1>
+
+  <div class="input-row">
+    <input id="newTodo" type="text" placeholder="添加新任务...">
+    <button id="addBtn">添加</button>
+  </div>
+
+  <div class="toolbar">
+    <div class="filters">
+      <button class="active" data-filter="all">全部</button>
+      <button data-filter="active">未完成</button>
+      <button data-filter="completed">已完成</button>
+    </div>
+    <button class="clear-btn" id="clearCompleted">清除已完成</button>
+  </div>
+
+  <ul class="todo-list" id="todoList"></ul>
+  <div class="footer" id="footer"></div>
+</div>
+
+<script>
+const STORAGE_KEY = 'todos_data';
+
+let todos = [];
+let filter = 'all';
+
+const listEl = document.getElementById('todoList');
+const inputEl = document.getElementById('newTodo');
+const addBtn = document.getElementById('addBtn');
+const clearBtn = document.getElementById('clearCompleted');
+const footerEl = document.getElementById('footer');
+const filterBtns = document.querySelectorAll('.filters button');
+
+function load() {
+  try { todos = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e) { todos = []; }
+}
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+}
+
+function render() {
+  const filtered = filter === 'all' ? todos
+    : filter === 'active' ? todos.filter(t => !t.done)
+    : todos.filter(t => t.done);
+
+  const activeCount = todos.filter(t => !t.done).length;
+  footerEl.textContent = `${activeCount} 项待完成`;
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = `<div class="empty">暂无任务</div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(t => `
+    <li class="todo-item ${t.done ? 'completed' : ''}" data-id="${t.id}">
+      <div class="checkbox ${t.done ? 'checked' : ''}" data-action="toggle"></div>
+      <span class="todo-text">${esc(t.text)}</span>
+      <input class="edit-input" value="${esc(t.text)}">
+      <div class="actions">
+        <button class="edit-btn" data-action="edit">编辑</button>
+        <button class="del-btn" data-action="delete">删除</button>
+      </div>
+      <button class="save-btn" data-action="save" style="display:none">保存</button>
+      <button class="cancel-btn" data-action="cancel" style="display:none">取消</button>
+    </li>
+  `).join('');
+}
+
+function esc(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+function addTodo() {
+  const text = inputEl.value.trim();
+  if (!text) return;
+  todos.push({ id: Date.now(), text, done: false });
+  save();
+  inputEl.value = '';
+  render();
+}
+
+function toggleTodo(id) {
+  const t = todos.find(t => t.id === id);
+  if (t) { t.done = !t.done; save(); render(); }
+}
+
+function deleteTodo(id) {
+  todos = todos.filter(t => t.id !== id);
+  save(); render();
+}
+
+function startEdit(id) {
+  const item = listEl.querySelector(`[data-id="${id}"]`);
+  item.classList.add('editing');
+  const inp = item.querySelector('.edit-input');
+  inp.focus();
+  inp.setSelectionRange(inp.value.length, inp.value.length);
+  item.querySelector('.save-btn').style.display = '';
+  item.querySelector('.cancel-btn').style.display = '';
+}
+
+function saveEdit(id) {
+  const item = listEl.querySelector(`[data-id="${id}"]`);
+  const val = item.querySelector('.edit-input').value.trim();
+  if (val) {
+    const t = todos.find(t => t.id === id);
+    if (t) { t.text = val; save(); }
+  }
+  item.classList.remove('editing');
+  item.querySelector('.save-btn').style.display = 'none';
+  item.querySelector('.cancel-btn').style.display = 'none';
+  render();
+}
+
+function cancelEdit(id) {
+  render();
+}
+
+function clearCompleted() {
+  todos = todos.filter(t => !t.done);
+  save(); render();
+}
+
+listEl.addEventListener('click', e => {
+  const action = e.target.dataset.action;
+  const li = e.target.closest('.todo-item');
+  if (!li) return;
+  const id = Number(li.dataset.id);
+
+  if (action === 'toggle') toggleTodo(id);
+  else if (action === 'delete') deleteTodo(id);
+  else if (action === 'edit') startEdit(id);
+  else if (action === 'save') saveEdit(id);
+  else if (action === 'cancel') cancelEdit(id);
+});
+
+listEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const li = e.target.closest('.todo-item');
+    if (li && li.classList.contains('editing')) saveEdit(Number(li.dataset.id));
+  } else if (e.key === 'Escape') {
+    const li = e.target.closest('.todo-item');
+    if (li && li.classList.contains('editing')) cancelEdit(Number(li.dataset.id));
+  }
+});
+
+addBtn.addEventListener('click', addTodo);
+inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') addTodo(); });
+
+clearBtn.addEventListener('click', clearCompleted);
+
+filterBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    filterBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    filter = btn.dataset.filter;
+    render();
+  });
+});
+
+load();
+render();
+</script>
+</body>
+</html>
